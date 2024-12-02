@@ -42,15 +42,19 @@ WHERE O2.EmployeeID=E.EmployeeID AND YEAR(OrderDate)=1997 AND MONTH(OrderDate)=2
 FROM Employees E
 ORDER BY 4 DESC;
 
---ZAD 2, Podaj imiona, nazwiska i tytuły książek poozyczone przez wiecej niz 1 czytelnika, ktorzy mają dzieci.
+--ZAD 2, Podaj imiona, nazwiska i tytuły książek pożyczone przez więcej niż 1 czytelnika, którzy mają dzieci.
 use library;
 
-SELECT FirstName, LastName, title FROM member m
+SELECT DISTINCT m.member_no, FirstName, LastName, title FROM member m
 INNER JOIN juvenile j ON m.member_no=j.adult_member_no
 INNER JOIN loanhist lh ON lh.member_no=m.member_no
 INNER JOIN title t ON t.title_no=lh.title_no
-GROUP BY m.member_no, FirstName, LastName, title
-ORDER BY title, LastName, FirstName;
+WHERE t.title_no IN
+(SELECT title_no FROM loanhist
+WHERE member_no IN
+(SELECT adult_member_no FROM juvenile)
+GROUP BY title_no
+HAVING COUNT(member_no)>1);
 
 --ZAD 3, Podaj wszystkie zamówienia dla których opłata za przesyłke > od sredniej w danym roku
 use Northwind;
@@ -67,15 +71,16 @@ use library;
 SELECT m.member_no, FirstName+' '+LastName AS 'name', street+' '+city+' '+state+' '+zip AS 'address', 'Adult',
 YEAR(out_date) AS 'rok', MONTH(out_date) AS 'miesiac', COUNT(out_date) AS 'ilość wypożyczeń' FROM member m
 INNER JOIN adult a ON a.member_no=m.member_no
-INNER JOIN loanhist lh ON lh.member_no=m.member_no
+LEFT JOIN loanhist lh ON lh.member_no=m.member_no
 GROUP BY m.member_no, FirstName+' '+LastName, street+' '+city+' '+state+' '+zip, YEAR(out_date), MONTH(out_date)
 UNION
 SELECT m.member_no, FirstName+' '+LastName AS 'name', street+' '+city+' '+state+' '+zip AS 'address', 'Child',
 YEAR(out_date) AS 'rok', MONTH(out_date) AS 'miesiac', COUNT(out_date) AS 'ilość wypożyczeń' FROM member m
 INNER JOIN juvenile j ON j.member_no=m.member_no
 INNER JOIN adult a ON a.member_no=j.adult_member_no
-INNER JOIN loanhist lh ON lh.member_no=m.member_no
-GROUP BY m.member_no, FirstName+' '+LastName, street+' '+city+' '+state+' '+zip, YEAR(out_date), MONTH(out_date);
+LEFT JOIN loanhist lh ON lh.member_no=m.member_no
+GROUP BY m.member_no, FirstName+' '+LastName, street+' '+city+' '+state+' '+zip, YEAR(out_date), MONTH(out_date)
+ORDER BY member_no;
 
 --3. Klienci, którzy nie zamówili nigdy nic z kategorii 'Seafood' w trzech wersjach.
 use Northwind;
@@ -105,6 +110,14 @@ INNER JOIN [Order Details] OD ON O.OrderID=OD.OrderID
 INNER JOIN Products P ON P.ProductID=OD.ProductID
 INNER JOIN Categories Cat ON Cat.CategoryID=P.CategoryID
 WHERE CategoryName='Seafood');
+
+SELECT C.CustomerID, C.CompanyName FROM Customers C
+WHERE NOT EXISTS
+(SELECT DISTINCT O.CustomerID FROM Orders O
+INNER JOIN [Order Details] OD ON O.OrderID=OD.OrderID
+INNER JOIN Products P ON P.ProductID=OD.ProductID
+INNER JOIN Categories Cat ON Cat.CategoryID=P.CategoryID
+WHERE CategoryName='Seafood' and O.CustomerID=C.CustomerID);
 
 --4. Dla każdego klienta podaj najczęściej zamawianą kategorię w dwóch wersjach.
 
@@ -265,14 +278,21 @@ WHERE S.CompanyName NOT LIKE 'United Package' AND YEAR(ShippedDate)=1997 AND MON
 /*4. Wybierz klientów, którzy kupili przedmioty wyłącznie z jednej kategorii w marcu
 1997 i wypisz nazwę tej kategorii*/
 
-SELECT C.CustomerID, C.CompanyName, Cat.CategoryName, COUNT(*) FROM Customers C
+(SELECT C.CustomerID, C.CompanyName, Cat.CategoryName FROM Customers C
+INNER JOIN Orders O ON O.CustomerID=C.CustomerID
+INNER JOIN [Order Details] OD ON OD.OrderID=O.OrderID
+INNER JOIN Products P ON P.ProductID=OD.ProductID
+INNER JOIN Categories Cat ON Cat.CategoryID=P.CategoryID
+WHERE YEAR(OrderDate)=1997 AND MONTH(OrderDate)=3 AND C.CustomerID IN
+(SELECT C.CustomerID FROM Customers C
 INNER JOIN Orders O ON O.CustomerID=C.CustomerID
 INNER JOIN [Order Details] OD ON OD.OrderID=O.OrderID
 INNER JOIN Products P ON P.ProductID=OD.ProductID
 INNER JOIN Categories Cat ON Cat.CategoryID=P.CategoryID
 WHERE YEAR(OrderDate)=1997 AND MONTH(OrderDate)=3
-GROUP BY C.CustomerID, C.CompanyName, Cat.CategoryName
-HAVING COUNT(*)=1;
+GROUP BY C.CustomerID
+HAVING COUNT(DISTINCT P.CategoryID)=1)
+GROUP BY C.CustomerID, C.CompanyName, Cat.CategoryName)
 
 /*1. Wybierz dzieci wraz z adresem, które nie wypożyczyły książek w lipcu 2001
 autorstwa ‘Jane Austin’*/
